@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>制备放大计算器</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: instrument-panel — two column "slots" side by side, a results strip of factors, then the gradient table. */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --ink:#17232b; --muted:#5d6b74; --line:#d3dade;
+  --accent:#0f6f8f; --accent-soft:#e0eff4; --trace:#c77a12; --trace-soft:#fbf0e1;
+  --warn:#a3480f; --warn-soft:#fbe9dc; --ok:#2f7a4a;
+  --f-ui:system-ui,-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --f-data:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1519; --panel:#172026; --ink:#e3eaee; --muted:#93a3ad; --line:#2a363e;
+  --accent:#5bb8d6; --accent-soft:#16313b; --trace:#e9a64b; --trace-soft:#33271a;
+  --warn:#f0a070; --warn-soft:#3a2418; --ok:#6cc48d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1519; --panel:#172026; --ink:#e3eaee; --muted:#93a3ad; --line:#2a363e;
+  --accent:#5bb8d6; --accent-soft:#16313b; --trace:#e9a64b; --trace-soft:#33271a;
+  --warn:#f0a070; --warn-soft:#3a2418; --ok:#6cc48d; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+header h1{font-size:1.6rem;margin:0;font-weight:700;letter-spacing:.01em;text-wrap:balance}
+header p{margin:4px 0 0;color:var(--muted);font-size:.9rem;max-width:68ch}
+.eyebrow{font-family:var(--f-data);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.slots{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.slots{grid-template-columns:1fr}}
+.slot{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.slot-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.slot-head h2{margin:0;font-size:1.05rem}
+.tag{font-family:var(--f-data);font-size:.72rem;padding:2px 8px;border-radius:3px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+.slot.prep .tag{background:var(--trace-soft);color:var(--trace)}
+label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);min-width:0}
+select,input{font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%;min-width:0}
+input[type=number]{font-family:var(--f-data)}
+select:focus,input:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.row3{display:grid;grid-template-columns:1fr 1.2fr;gap:10px}
+.row3 .full{grid-column:1/-1}
+.dims{display:flex;gap:6px;flex-wrap:wrap;font-family:var(--f-data);font-size:.82rem}
+.dims span{border:1px solid var(--line);border-radius:3px;padding:3px 8px;color:var(--muted)}
+.dims b{color:var(--ink);font-weight:600}
+.flow{display:flex;align-items:flex-end;gap:10px}
+.flow label{flex:1}
+.unit{font-family:var(--f-data);font-size:.8rem;color:var(--muted);padding-bottom:10px}
+button{font:inherit;font-size:.85rem;cursor:pointer;border-radius:4px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+button.ghost{border-color:transparent;color:var(--accent);padding:4px 6px}
+button:hover{filter:brightness(1.06)}
+.results{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.res-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.res-head h2{margin:0;font-size:1.05rem}
+.factors{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+@media (max-width:760px){.factors{grid-template-columns:repeat(2,1fr)}}
+.factor{background:var(--panel);padding:12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.factor .k{font-size:.78rem;color:var(--muted)}
+.factor .v{font-family:var(--f-data);font-size:1.45rem;font-weight:600;font-variant-numeric:tabular-nums}
+.factor.key .v{color:var(--trace)}
+.factor .f{font-family:var(--f-data);font-size:.72rem;color:var(--muted);word-break:break-word}
+.notes{display:flex;flex-direction:column;gap:6px;font-size:.85rem}
+.note{padding:8px 10px;border-radius:4px;background:var(--accent-soft)}
+.note.warn{background:var(--warn-soft);color:var(--warn)}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;min-width:440px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;font-size:.88rem}
+th{font-size:.75rem;color:var(--muted);font-weight:500}
+td.out{font-family:var(--f-data);color:var(--trace);font-weight:600}
+td input{padding:5px 7px;max-width:110px}
+.grad-actions{display:flex;gap:8px;flex-wrap:wrap}
+details{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 16px}
+summary{cursor:pointer;font-weight:600}
+.add-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+@media (max-width:600px){.add-grid{grid-template-columns:1fr 1fr}}
+.custom-list{display:flex;flex-direction:column;gap:4px;margin-top:12px;font-size:.85rem}
+.custom-list div{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px dashed var(--line);padding:4px 0}
+.formula{font-family:var(--f-data);font-size:.8rem;color:var(--muted);line-height:1.7}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:4px;font-size:.85rem}
+footer{font-size:.78rem;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Analytical → Preparative scale-up</div>
+    <h1>制备放大计算器</h1>
+    <p>选分析柱和制备柱，填两边流速，自动算出上样量放大系数、梯度时间系数和制备梯度。选过的色谱柱、流速和梯度会记在本浏览器里，下次打开还是同样的设置。</p>
+  </header>
+
+  <section class="slots">
+    <div class="slot an" id="slot-an">
+      <div class="slot-head"><h2>分析柱</h2><span class="tag">ANALYTICAL</span></div>
+      <div class="row3">
+        <label>厂商<select id="an-brand"></select></label>
+        <label>系列<select id="an-series"></select></label>
+        <label class="full">规格（内径 × 柱长，粒径）<select id="an-spec"></select></label>
+      </div>
+      <div class="dims" id="an-dims"></div>
+      <div class="flow"><label>分析流速<input type="number" id="an-flow" step="0.01" min="0" inputmode="decimal"></label><span class="unit">mL/min</span></div>
+    </div>
+    <div class="slot prep" id="slot-prep">
+      <div class="slot-head"><h2>制备柱</h2><span class="tag">PREP</span></div>
+      <div class="row3">
+        <label>厂商<select id="prep-brand"></select></label>
+        <label>系列<select id="prep-series"></select></label>
+        <label class="full">规格（内径 × 柱长，粒径）<select id="prep-spec"></select></label>
+      </div>
+      <div class="dims" id="prep-dims"></div>
+      <div class="flow"><label>制备流速<input type="number" id="prep-flow" step="0.1" min="0" inputmode="decimal"></label><span class="unit">mL/min</span>
+        <button class="ghost" id="use-rec" type="button">填入推荐</button></div>
+    </div>
+  </section>
+
+  <section class="results">
+    <div class="res-head"><h2>放大系数</h2><button id="copy" type="button">复制结果</button></div>
+    <div class="factors">
+      <div class="factor key"><span class="k">上样量放大系数</span><span class="v" id="r-load">–</span><span class="f">(dₚ²·Lₚ)/(dₐ²·Lₐ)</span></div>
+      <div class="factor key"><span class="k">梯度时间系数</span><span class="v" id="r-time">–</span><span class="f">上样系数 × Fₐ/Fₚ</span></div>
+      <div class="factor"><span class="k">推荐制备流速</span><span class="v" id="r-rec">–</span><span class="f">Fₐ·(dₚ/dₐ)² · 等线速度</span></div>
+      <div class="factor"><span class="k">截面积比</span><span class="v" id="r-area">–</span><span class="f">(dₚ/dₐ)²</span></div>
+    </div>
+    <div class="row3" style="grid-template-columns:repeat(3,1fr)">
+      <label>分析进样量（mg，可选）<input type="number" id="an-mass" step="0.01" min="0" inputmode="decimal"></label>
+      <label>分析进样体积（µL，可选）<input type="number" id="an-vol" step="1" min="0" inputmode="decimal"></label>
+      <label>对应制备上样<input id="r-mass" readonly tabindex="-1"></label>
+    </div>
+    <div class="notes" id="notes"></div>
+  </section>
+
+  <section class="results">
+    <div class="res-head"><h2>梯度转换</h2>
+      <div class="grad-actions"><button id="add-row" type="button">加一行</button><button id="reset-grad" type="button">恢复示例</button></div></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>分析时间 (min)</th><th>%B</th><th>制备时间 (min)</th><th>%B</th><th></th></tr></thead>
+      <tbody id="grad-body"></tbody>
+    </table></div>
+    <div class="row3" style="grid-template-columns:1fr 1fr 1.4fr">
+      <label>分析系统延迟体积（mL，可选）<input type="number" id="vd-an" step="0.05" min="0" inputmode="decimal"></label>
+      <label>制备系统延迟体积（mL，可选）<input type="number" id="vd-prep" step="0.1" min="0" inputmode="decimal"></label>
+      <label>延迟体积补偿<input id="r-dwell" readonly tabindex="-1"></label>
+    </div>
+  </section>
+
+  <details id="add-panel">
+    <summary>手动新增色谱柱</summary>
+    <div class="add-grid">
+      <label>用途<select id="c-type"><option value="an">分析柱</option><option value="prep">制备柱</option></select></label>
+      <label>厂商<input id="c-brand" placeholder="如 Waters"></label>
+      <label>系列/型号<input id="c-series" placeholder="如 XBridge BEH C18"></label>
+      <label>内径 ID (mm)<input type="number" id="c-d" step="0.1" min="0" inputmode="decimal"></label>
+      <label>柱长 L (mm)<input type="number" id="c-L" step="1" min="0" inputmode="decimal"></label>
+      <label>粒径 (µm)<input type="number" id="c-dp" step="0.1" min="0" inputmode="decimal"></label>
+      <label style="grid-column:1/-1">货号/备注（可选）<input id="c-note" placeholder="如 186002979"></label>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="primary" id="c-add" type="button">添加并选用</button><span id="c-msg" style="font-size:.85rem;color:var(--warn)"></span>
+    </div>
+    <div class="custom-list" id="custom-list"></div>
+  </details>
+
+  <details>
+    <summary>公式与说明</summary>
+    <div class="formula" style="margin-top:10px">
+      上样量系数 = (d<sub>prep</sub>² × L<sub>prep</sub>) / (d<sub>an</sub>² × L<sub>an</sub>)　（柱体积比）<br>
+      梯度时间 t<sub>prep</sub> = t<sub>an</sub> × 上样量系数 × F<sub>an</sub> / F<sub>prep</sub>　（保持每段梯度所经过的柱体积数不变）<br>
+      推荐流速 F<sub>prep</sub> = F<sub>an</sub> × (d<sub>prep</sub>/d<sub>an</sub>)²　（保持线速度不变；按此流速且柱长相同时，梯度时间不变）<br>
+      柱死体积 V₀ ≈ 0.68 × π(d/2)² × L　（全多孔硅胶/杂化填料经验值）<br>
+      延迟体积补偿：把分析系统延迟体积按柱体积比换算到制备规模，与制备系统延迟体积之差 ÷ 制备流速 = 制备方法起始需追加的等度保持时间。
+    </div>
+    <p style="font-size:.82rem;color:var(--muted);margin:10px 0 0">内置柱规格按各厂商在售目录整理（Waters、Agilent、Phenomenex、YMC、月旭 Welch、岛津）。同一系列不同粒径的可选尺寸不完全一样，下单前请以货号在官网核对；目录里没有的柱子用“手动新增”。</p>
+  </details>
+
+  <footer>选择、流速、梯度和自定义色谱柱只保存在当前浏览器里。</footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<div id="js-err" class="note warn" hidden style="max-width:1080px;margin:12px auto 0"></div>
+<script>
+window.addEventListener('error',function(e){var el=document.getElementById('js-err');if(el){el.hidden=false;el.textContent='页面脚本出错：'+(e.message||'未知错误')+'。请换用 Chrome、Edge 或 Safari 打开。'}});
+(function(){
+// [type, brand, series, particle µm, [[ID mm, [lengths mm]], ...]]
+const SPEC = [
+ // ---------- 分析柱 ----------
+ ['an','Waters','ACQUITY UPLC BEH C18',1.7,[[2.1,[50,100,150]]]],
+ ['an','Waters','XBridge BEH C18 XP',2.5,[[2.1,[50,100]],[3.0,[50,100]],[4.6,[50,100,150]]]],
+ ['an','Waters','XBridge BEH C18',3.5,[[2.1,[50,100,150]],[3.0,[50,100,150]],[4.6,[50,100,150]]]],
+ ['an','Waters','XBridge BEH C18',5,[[2.1,[50,150]],[4.6,[50,150,250]]]],
+ ['an','Waters','SunFire C18',3.5,[[4.6,[50,100,150]]]],
+ ['an','Waters','SunFire C18',5,[[4.6,[150,250]]]],
+ ['an','Waters','XSelect CSH C18',3.5,[[2.1,[50,100]],[4.6,[50,100,150]]]],
+ ['an','Waters','XSelect CSH C18',5,[[4.6,[150,250]]]],
+ ['an','Agilent','ZORBAX Eclipse Plus C18',1.8,[[2.1,[50,100]]]],
+ ['an','Agilent','ZORBAX Eclipse Plus C18',3.5,[[3.0,[100]],[4.6,[100,150]]]],
+ ['an','Agilent','ZORBAX Eclipse Plus C18',5,[[4.6,[150,250]]]],
+ ['an','Agilent','ZORBAX SB-C18',1.8,[[2.1,[50]]]],
+ ['an','Agilent','ZORBAX SB-C18',3.5,[[4.6,[100,150]]]],
+ ['an','Agilent','ZORBAX SB-C18',5,[[4.6,[150,250]]]],
+ ['an','Phenomenex','Gemini NX-C18',3,[[2.0,[50]],[4.6,[50,150]]]],
+ ['an','Phenomenex','Gemini NX-C18',5,[[4.6,[150,250]]]],
+ ['an','Phenomenex','Luna C18(2)',3,[[2.0,[50]],[4.6,[150]]]],
+ ['an','Phenomenex','Luna C18(2)',5,[[4.6,[150,250]]]],
+ ['an','YMC','YMC-Triart C18',1.9,[[2.0,[50,100]]]],
+ ['an','YMC','YMC-Triart C18',3,[[4.6,[150]]]],
+ ['an','YMC','YMC-Triart C18',5,[[4.6,[150,250]]]],
+ ['an','月旭 Welch','Ultimate XB-C18',3,[[4.6,[100,150]]]],
+ ['an','月旭 Welch','Ultimate XB-C18',5,[[4.6,[150,250]]]],
+ ['an','岛津 Shimadzu','Shim-pack GIST C18',3,[[4.6,[150]]]],
+ ['an','岛津 Shimadzu','Shim-pack GIST C18',5,[[4.6,[150,250]]]],
+ // ---------- 制备柱 ----------
+ ['prep','Waters','XBridge Prep C18 (半制备)',5,[[10,[50,100,150,250]]]],
+ ['prep','Waters','XBridge BEH C18 OBD Prep',5,[[19,[50,100,150,250]],[30,[50,100,150,250]],[50,[50,100,150]]]],
+ ['prep','Waters','XBridge BEH C18 OBD Prep',10,[[19,[150,250]],[30,[150,250]],[50,[100,150,250]]]],
+ ['prep','Waters','SunFire Prep C18 OBD',5,[[19,[50,100,150,250]],[30,[50,100,150,250]]]],
+ ['prep','Waters','SunFire Prep C18 OBD',10,[[19,[150,250]],[30,[150,250]],[50,[100,150,250]]]],
+ ['prep','Waters','XSelect CSH Prep C18 OBD',5,[[19,[50,100,150,250]],[30,[50,100,150]]]],
+ ['prep','Agilent','ZORBAX SB-C18 (半制备)',5,[[9.4,[250]]]],
+ ['prep','Agilent','ZORBAX SB-C18 PrepHT',5,[[21.2,[50,100,150,250]]]],
+ ['prep','Agilent','ZORBAX Eclipse XDB-C18 PrepHT',5,[[21.2,[150,250]]]],
+ ['prep','Phenomenex','Gemini NX-C18 (半制备)',5,[[10,[250]]]],
+ ['prep','Phenomenex','Gemini NX-C18 AXIA',5,[[21.2,[50,100,150,250]],[30,[100,150,250]]]],
+ ['prep','Phenomenex','Gemini NX-C18 AXIA',10,[[21.2,[250]],[30,[250]]]],
+ ['prep','Phenomenex','Luna C18(2) AXIA',5,[[21.2,[150,250]]]],
+ ['prep','Phenomenex','Luna C18(2) AXIA',10,[[21.2,[250]],[30,[250]]]],
+ ['prep','YMC','YMC-Triart C18 (半制备)',5,[[10,[250]]]],
+ ['prep','YMC','YMC-Triart C18 Prep',5,[[20,[150,250]],[30,[150,250]]]],
+ ['prep','YMC','YMC-Triart C18 Prep',10,[[20,[250]],[30,[250]],[50,[250]]]],
+ ['prep','月旭 Welch','Ultisil XB-C18',5,[[10,[250]],[21.2,[250]],[30,[250]]]],
+ ['prep','月旭 Welch','Ultisil XB-C18',7,[[21.2,[250]]]],
+ ['prep','月旭 Welch','Ultisil XB-C18',10,[[10,[250]],[21.2,[250]],[30,[250]],[50,[250]]]],
+];
+const BUILTIN=[];
+SPEC.forEach(([type,brand,series,dp,dims])=>dims.forEach(([d,Ls])=>Ls.forEach(L=>{
+  BUILTIN.push({id:[type,brand,series,d,L,dp].join('|'),type,brand,series,d,L,dp});
+})));
+BUILTIN.push({id:'prep|Agilent|Agilent 10 Prep-C18|21.2|250|10',type:'prep',brand:'Agilent',series:'Agilent 10 Prep-C18',d:21.2,L:250,dp:10,note:'P.N. 410910-102'});
+
+const KEY='prep-scaleup-v1';
+function load(){try{return JSON.parse(localStorage.getItem(KEY))||{}}catch(e){return{}}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+const DEFAULT_GRAD=[[0,5],[1,5],[11,95],[13,95],[13.1,5],[16,5]];
+let state=Object.assign({
+  an:'an|Waters|XBridge BEH C18|4.6|150|5',
+  prep:'prep|Waters|XBridge BEH C18 OBD Prep|19|150|5',
+  anFlow:1.0, prepFlow:17.0, custom:[], grad:DEFAULT_GRAD, anMass:'', anVol:'', vdAn:'', vdPrep:''
+},load());
+if(!Array.isArray(state.custom))state.custom=[];
+if(!Array.isArray(state.grad)||!state.grad.length)state.grad=DEFAULT_GRAD.map(r=>r.slice());
+
+const $=id=>document.getElementById(id);
+const all=()=>BUILTIN.concat(state.custom);
+const byId=id=>all().find(c=>c.id===id);
+const fmt=(x,n=2)=>{if(!isFinite(x))return'–';const a=Math.abs(x);return(a>=100?x.toFixed(1):a>=10?x.toFixed(n):x.toFixed(Math.max(n,2))).replace(/\.?0+$/,m=>m.includes('.')?'':m)};
+const v0=c=>0.68*Math.PI*Math.pow(c.d/20,2)*(c.L/10); // mL
+const specLabel=c=>`${c.d} × ${c.L} mm，${c.dp} µm`+(c.note?`（${c.note}）`:'');
+const uniq=a=>[...new Set(a)];
+
+function fill(sel,opts,val){
+  sel.innerHTML='';opts.forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;sel.appendChild(o)});
+  if(opts.some(o=>o[0]===val))sel.value=val;
+}
+function renderSide(side){
+  const list=all().filter(c=>c.type===side);
+  const cur=byId(state[side])||list[0];state[side]=cur.id;
+  const brands=uniq(list.map(c=>c.brand));
+  fill($(side+'-brand'),brands.map(b=>[b,b]),cur.brand);
+  const series=uniq(list.filter(c=>c.brand===cur.brand).map(c=>c.series));
+  fill($(side+'-series'),series.map(s=>[s,s]),cur.series);
+  const specs=list.filter(c=>c.brand===cur.brand&&c.series===cur.series).sort((a,b)=>a.dp-b.dp||a.d-b.d||a.L-b.L);
+  fill($(side+'-spec'),specs.map(c=>[c.id,specLabel(c)]),cur.id);
+  $(side+'-dims').innerHTML=`<span>ID <b>${cur.d}</b> mm</span><span>L <b>${cur.L}</b> mm</span><span>粒径 <b>${cur.dp}</b> µm</span><span>V₀ ≈ <b>${fmt(v0(cur))}</b> mL</span><span>L/dp <b>${Math.round(cur.L*1000/cur.dp).toLocaleString()}</b></span>`;
+}
+function pick(side,brand,series){
+  const list=all().filter(c=>c.type===side&&c.brand===brand&&(!series||c.series===series));
+  const cur=byId(state[side]);
+  // keep same dimensions when switching brand/series if available
+  const same=cur&&list.find(c=>c.d===cur.d&&c.L===cur.L&&c.dp===cur.dp);
+  const near=cur&&list.slice().sort((a,b)=>Math.abs(a.d-cur.d)-Math.abs(b.d-cur.d)||Math.abs(a.L-cur.L)-Math.abs(b.L-cur.L))[0];
+  state[side]=(same||near||list[0]).id;
+}
+['an','prep'].forEach(side=>{
+  $(side+'-brand').addEventListener('change',e=>{pick(side,e.target.value);update()});
+  $(side+'-series').addEventListener('change',e=>{pick(side,$(side+'-brand').value,e.target.value);update()});
+  $(side+'-spec').addEventListener('change',e=>{state[side]=e.target.value;update()});
+});
+const num=v=>{const x=parseFloat(v);return isFinite(x)?x:NaN};
+[['an-flow','anFlow'],['prep-flow','prepFlow'],['an-mass','anMass'],['an-vol','anVol'],['vd-an','vdAn'],['vd-prep','vdPrep']].forEach(([id,k])=>{
+  $(id).value=state[k]===undefined?'':state[k];
+  $(id).addEventListener('input',e=>{state[k]=e.target.value;calc();save()});
+});
+
+let last={};
+function calc(){
+  const a=byId(state.an),p=byId(state.prep);
+  const Fa=num(state.anFlow),Fp=num(state.prepFlow);
+  const area=Math.pow(p.d/a.d,2);
+  const load=area*p.L/a.L;
+  const time=load*Fa/Fp;
+  const rec=Fa*area;
+  $('r-load').textContent=fmt(load);
+  $('r-time').textContent=(Fa>0&&Fp>0)?fmt(time,3):'–';
+  $('r-rec').textContent=Fa>0?fmt(rec,1)+' mL/min':'–';
+  $('r-area').textContent=fmt(area);
+  const m=num(state.anMass),vol=num(state.anVol),parts=[];
+  if(m>0)parts.push(fmt(m*load)+' mg');
+  if(vol>0)parts.push(fmt(vol*load/1000,2)+' mL');
+  $('r-mass').value=parts.length?parts.join(' / '):'填左侧任一项';
+  // notes
+  const notes=[];
+  if(Fa>0&&Fp>0){
+    const dev=Fp/rec-1;
+    if(Math.abs(dev)>0.15)notes.push(['warn',`制备流速比等线速度推荐值${dev>0?'高':'低'} ${Math.round(Math.abs(dev)*100)}%，梯度时间已按实际流速换算；注意制备柱压和分离度。`]);
+    else notes.push(['',`制备流速与等线速度推荐值接近，梯度时间系数 ${fmt(time,3)}。`]);
+  }
+  if(a.dp!==p.dp){
+    const ra=a.L/a.dp,rp=p.L/p.dp;
+    notes.push([rp<ra*0.9?'warn':'',`两根柱粒径不同（${a.dp} → ${p.dp} µm）。L/dp：分析 ${Math.round(ra*1000).toLocaleString()}，制备 ${Math.round(rp*1000).toLocaleString()}${rp<ra*0.9?'，制备柱分离能力偏低，需留更宽的峰间距。':'，分离能力相当或更高。'}`]);
+  }
+  if(!/C18/i.test(a.series)||!/C18/i.test(p.series)||a.brand!==p.brand)notes.push(['',`分析柱与制备柱${a.brand!==p.brand?'厂商':'填料'}不同，保留时间和选择性可能变化，建议先做小量上样确认。`]);
+  // dwell
+  const vda=num(state.vdAn),vdp=num(state.vdPrep);let dwellTxt='填两项延迟体积后计算';
+  if(vda>=0&&vdp>=0&&state.vdAn!==''&&state.vdPrep!==''&&Fp>0){
+    const target=vda*load;const diff=(target-vdp)/Fp;
+    dwellTxt=diff>=0?`起始追加等度 ${fmt(diff)} min`:`制备系统多 ${fmt(-diff)} min 延迟，可推迟进样或不补偿`;
+  }
+  $('r-dwell').value=dwellTxt;
+  $('notes').innerHTML=notes.map(([c,t])=>`<div class="note ${c}">${t}</div>`).join('');
+  // gradient
+  document.querySelectorAll('#grad-body tr').forEach((tr,i)=>{
+    const t=num(state.grad[i][0]),b=state.grad[i][1];
+    tr.querySelector('.tp').textContent=(isFinite(t)&&Fa>0&&Fp>0)?fmt(t*time):'–';
+    tr.querySelector('.bp').textContent=b===''||b===undefined?'–':b;
+  });
+  last={a,p,Fa,Fp,load,time,rec,area,dwellTxt,mass:$('r-mass').value};
+}
+function renderGrad(){
+  const tb=$('grad-body');tb.innerHTML='';
+  state.grad.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><input type="number" step="0.1" min="0" id="gt${i}" aria-label="分析时间"></td><td><input type="number" step="1" min="0" max="100" id="gb${i}" aria-label="%B"></td><td class="out tp"></td><td class="out bp"></td><td><button class="ghost" type="button" aria-label="删除这一行">删除</button></td>`;
+    tr.querySelector('#gt'+i).value=r[0];tr.querySelector('#gb'+i).value=r[1];
+    tr.querySelector('#gt'+i).addEventListener('input',e=>{state.grad[i][0]=e.target.value;calc();save()});
+    tr.querySelector('#gb'+i).addEventListener('input',e=>{state.grad[i][1]=e.target.value;calc();save()});
+    tr.querySelector('button').addEventListener('click',()=>{if(state.grad.length>1){state.grad.splice(i,1);renderGrad();calc();save()}});
+    tb.appendChild(tr);
+  });
+}
+$('add-row').addEventListener('click',()=>{const l=state.grad[state.grad.length-1];state.grad.push([l?(num(l[0])||0)+1:0,l?l[1]:5]);renderGrad();calc();save()});
+$('reset-grad').addEventListener('click',()=>{state.grad=DEFAULT_GRAD.map(r=>r.slice());renderGrad();calc();save()});
+$('use-rec').addEventListener('click',()=>{const a=byId(state.an),p=byId(state.prep),Fa=num(state.anFlow);if(!(Fa>0))return;
+  state.prepFlow=+(Fa*Math.pow(p.d/a.d,2)).toFixed(1);$('prep-flow').value=state.prepFlow;calc();save()});
+
+function renderCustom(){
+  const box=$('custom-list');
+  if(!state.custom.length){box.innerHTML='<span style="color:var(--muted)">还没有自定义色谱柱。</span>';return}
+  box.innerHTML='';
+  state.custom.forEach(c=>{
+    const d=document.createElement('div');
+    d.innerHTML=`<span>${c.type==='an'?'分析':'制备'}｜${c.brand} ${c.series}｜${specLabel(c)}</span>`;
+    const b=document.createElement('button');b.className='ghost';b.type='button';b.textContent='删除';
+    b.addEventListener('click',()=>{state.custom=state.custom.filter(x=>x.id!==c.id);
+      ['an','prep'].forEach(s=>{if(state[s]===c.id)state[s]=all().find(x=>x.type===s).id});update();renderCustom()});
+    d.appendChild(b);box.appendChild(d);
+  });
+}
+$('c-add').addEventListener('click',()=>{
+  const type=$('c-type').value,brand=$('c-brand').value.trim()||'自定义',series=$('c-series').value.trim(),
+    d=num($('c-d').value),L=num($('c-L').value),dp=num($('c-dp').value),note=$('c-note').value.trim();
+  if(!series||!(d>0)||!(L>0)||!(dp>0)){$('c-msg').textContent='请填写系列、内径、柱长和粒径。';return}
+  const id=['custom',type,brand,series,d,L,dp].join('|');
+  if(byId(id)){$('c-msg').textContent='这根柱子已经在列表里了。';return}
+  state.custom.push({id,type,brand,series,d,L,dp,note,custom:true});state[type]=id;
+  $('c-msg').textContent='';['c-series','c-d','c-L','c-dp','c-note'].forEach(k=>$(k).value='');
+  update();renderCustom();toast('已添加并选用');
+});
+
+$('copy').addEventListener('click',()=>{
+  const {a,p,Fa,Fp,load,time,rec}=last;
+  const lines=[`分析柱：${a.brand} ${a.series} ${specLabel(a)}，${Fa} mL/min`,`制备柱：${p.brand} ${p.series} ${specLabel(p)}，${Fp} mL/min`,
+   `上样量放大系数：${fmt(load)}`,`梯度时间系数：${fmt(time,3)}`,`推荐制备流速（等线速度）：${fmt(rec,1)} mL/min`,
+   `制备上样：${last.mass}`,`延迟体积补偿：${last.dwellTxt}`,'','制备梯度：','时间(min)\t%B',
+   ...state.grad.map(r=>`${fmt(num(r[0])*time)}\t${r[1]}`)];
+  const txt=lines.join('\n');
+  const done=()=>toast('已复制');
+  try{navigator.clipboard.writeText(txt).then(done,()=>fallback(txt))}catch(e){fallback(txt)}
+});
+function fallback(t){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('已复制')}catch(e){toast('复制失败，请手动选择')}ta.remove()}
+let tt;function toast(m){const el=$('toast');el.textContent=m;el.hidden=false;clearTimeout(tt);tt=setTimeout(()=>el.hidden=true,1600)}
+
+function update(){renderSide('an');renderSide('prep');calc();save()}
+renderGrad();renderCustom();update();
+})();
+</script>
+
+</body>
+</html>
+
